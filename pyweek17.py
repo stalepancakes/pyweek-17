@@ -82,6 +82,10 @@ class Cat(Sprite):
         a = earth_G + moon_G
         verlet_step(self, a * t * t)
 
+    def collides(self):
+        return length(earth.pos - self.pos) < 49 \
+            or length(moon.pos - self.pos) < 49
+
 class Game(bacon.Game):
     def __init__(self):
         self.cats = []
@@ -120,6 +124,9 @@ class Game(bacon.Game):
         if self.down:
             direction = normalize(vec2(bacon.mouse.x, bacon.mouse.y) - earth.pos)
             self.cats.append(Cat(earth.pos + 50*direction, direction, self.power))
+
+        self.cats = [cat for cat in self.cats if not cat.collides()]
+
         if len(self.cats) > 200:
             self.cats = self.cats[10:]
 
@@ -131,7 +138,6 @@ class Game(bacon.Game):
         moon.draw()
         for cat in self.cats:
             cat.draw()
-
         to_cursor = normalize(vec2(bacon.mouse.x, bacon.mouse.y) - earth.pos)
         bacon.draw_line(earth.pos.x, earth.pos.y, earth.pos.x + 100*to_cursor.x, earth.pos.y + 100*to_cursor.y)
 
