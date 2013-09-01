@@ -10,16 +10,15 @@ WINDOW_HEIGHT = 1200
 MOON_DISTANCE = 500.0
 MOUSE_SPEED = 60.0
 MOUSE_SPAWN_COOLDOWN = 4.0
-MOUSE_INITIAL_SPAWN_DELAY = 0.0
-
+MOUSE_INITIAL_SPAWN_DELAY = 1.0
 CAT_SPAWN_COOLDOWN = 0.3
 
+EARTH_RADIUS = 75
 MOON_SECONDS_PER_ROTATION = 15.0
 
 bacon.window.resizable = True
-# TODO - need to wait for bug to be fixed
-#bacon.window.target = bacon.Image(width=1920, height=1200, atlas=0)
 bacon.window.fullscreen = True
+bacon.window.target = bacon.Image(width=1920, height=1200, atlas=0)
 
 textures = {
     'earth': bacon.Image('res/earth.png'),
@@ -120,7 +119,8 @@ class CatSpawner(object):
     def try_spawn(self, game):
         if self.cooldown <= 0:
             direction = normalize(vec2(bacon.mouse.x, bacon.mouse.y) - earth.pos)
-            game.cats.append(Cat(earth.pos + 50*direction, direction, self.launch_power))
+            offset = (earth.radius + textures['cat'].width / 2 + 1) * direction
+            game.cats.append(Cat(earth.pos + offset, direction, self.launch_power))
             self.cooldown = CAT_SPAWN_COOLDOWN
 
     def on_tick(self, game):
@@ -150,11 +150,7 @@ class Game(bacon.Game):
                 bacon.window.fullscreen = not bacon.window.fullscreen
 
     def on_mouse_scroll(self, dx, dy):
-        isUp = dy == 1.0
-        if isUp:
-            self.cat_spawner.launch_power += 1
-        else:
-            self.cat_spawner.launch_power -= 1
+        self.cat_spawner.launch_power += dy
 
     def handle_collision(self):
         for c in self.cats:
@@ -182,7 +178,6 @@ class Game(bacon.Game):
         i -= WINDOW_WIDTH
         if i < WINDOW_HEIGHT: return vec2(0, i)
         i -= WINDOW_HEIGHT
-        print i
         assert i < WINDOW_HEIGHT
         return vec2(WINDOW_WIDTH, i)
         
