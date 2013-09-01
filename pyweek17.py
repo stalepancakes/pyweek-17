@@ -24,6 +24,13 @@ def rotate(v, angle):
     c = math.cos(angle)
     return vec2(v.x * c - v.y * s, v.x * s + v.y * c)
 
+def verlet_init(o, initial_v):
+    assert hasattr(o, 'pos')
+    o.last_pos = o.pos - initial_v
+def verlet_step(o, a):
+    new_pos = (2 * o.pos) - o.last_pos + a
+    o.last_pos, o.pos = o.pos, new_pos
+    
 class Sprite(object):
     def __init__(self, pos, image):
         self.pos = pos
@@ -55,18 +62,19 @@ class Moon(Sprite):
 class Cat(Sprite):
     def __init__(self, pos):
         super(Cat, self).__init__(pos, textures['cat'])
+        verlet_init(self, vec2(-20, 0))
 
     def on_tick(self):
-        self.pos += bacon.timestep * vec2(-100, 0)
+        t = bacon.timestep
+        G = 60
+        earth_G = t * G * normalize(earth.pos - self.pos)
+        moon_G = 0.15 * t * G * normalize(moon.pos - self.pos)
+        verlet_step(self, earth_G + moon_G)
 
 class Game(bacon.Game):
     def __init__(self):
         self.cats = []
-
-    def on_init(self):
-        print bacon.window.width, bacon.window.height
-        global earthpos
-        earthpos = vec2(bacon.window.width / 2, bacon.window.height / 2)
+        self.down = False
 
     def on_key(self, key, value):
         if value:
@@ -77,11 +85,16 @@ class Game(bacon.Game):
 
     def on_mouse_button(self, button, pressed):
         # when left mouse button is released
+        if button == bacon.MouseButtons.left and pressed: 
+            self.down = True
         if button == bacon.MouseButtons.left and not pressed: 
-            self.cats.append(Cat(earth.pos - vec2(0, 50)))
+            self.down = False
 
     def on_tick(self):
         bacon.clear(0.2, 0.2, 0.2, 1.0)
+
+        if self.down:
+            self.cats.append(Cat(earth.pos - vec2(0, 50)))
 
         moon.on_tick()
         for cat in self.cats:
