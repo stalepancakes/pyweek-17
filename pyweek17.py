@@ -11,6 +11,12 @@ bacon.window.resizable = True
 #bacon.window.target = bacon.Image(width=1920, height=1200, atlas=0)
 bacon.window.fullscreen = True
 
+textures = {
+    'earth': bacon.Image('res/earth.png'),
+    'moon': bacon.Image('res/moon.png'),
+    'cat': bacon.Image('res/cat.png')
+}
+
 MOON_DISTANCE = 500
 
 def rotate(v, angle):
@@ -19,18 +25,25 @@ def rotate(v, angle):
     return vec2(v.x * c - v.y * s, v.x * s + v.y * c)
 
 class Sprite(object):
-    def __init__(self, pos):
+    def __init__(self, pos, image):
         self.pos = pos
+        self.image = image
 
     def draw(self):
-        bacon.fill_rect(self.pos.x - 50, self.pos.y - 50, self.pos.x + 50, self.pos.y + 50)
+        ox = self.image.width / 2
+        oy = self.image.height / 2
+
+        bacon.push_transform()
+        bacon.translate(self.pos.x, self.pos.y)
+        bacon.draw_image(self.image, -ox, -oy)
+        bacon.pop_transform()
 
 class Moon(Sprite):
     def __init__(self, earth, distance):
         self.earth = earth
         self.distance = distance
         self.angle = 0
-        super(Moon, self).__init__(self.calc_position())
+        super(Moon, self).__init__(self.calc_position(), textures['moon'])
 
     def on_tick(self):
         self.pos = self.calc_position()
@@ -40,8 +53,11 @@ class Moon(Sprite):
         return self.earth.pos + rotate(vec2(MOON_DISTANCE, 0), self.angle)
 
 class Cat(Sprite):
+    def __init__(self, pos):
+        super(Cat, self).__init__(pos, textures['cat'])
+
     def on_tick(self):
-        self.pos += bacon.timestep * vec2(-500, 0)
+        self.pos += bacon.timestep * vec2(-100, 0)
 
 class Game(bacon.Game):
     def __init__(self):
@@ -68,7 +84,8 @@ class Game(bacon.Game):
         bacon.clear(0.2, 0.2, 0.2, 1.0)
 
         moon.on_tick()
-        for cat in self.cats: cat.on_tick()
+        for cat in self.cats:
+            cat.on_tick()
 
         earth.draw()
         moon.draw()
@@ -77,6 +94,6 @@ class Game(bacon.Game):
 
         # print moon.pos, bacon.window.content_scale
 
-earth = Sprite(vec2(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2))
+earth = Sprite(vec2(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2), textures['earth'])
 moon = Moon(earth, 600)
 bacon.run(Game())
