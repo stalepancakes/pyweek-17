@@ -19,6 +19,8 @@ textures = {
 
 MOON_DISTANCE = 500
 
+font = bacon.Font(None, 16)
+
 def rotate(v, angle):
     s = math.sin(angle)
     c = math.cos(angle)
@@ -30,7 +32,7 @@ def verlet_init(o, initial_v):
 def verlet_step(o, a):
     new_pos = (2 * o.pos) - o.last_pos + a
     o.last_pos, o.pos = o.pos, new_pos
-    
+
 class Sprite(object):
     def __init__(self, pos, image):
         self.pos = pos
@@ -60,21 +62,31 @@ class Moon(Sprite):
         return self.earth.pos + rotate(vec2(MOON_DISTANCE, 0), self.angle)
 
 class Cat(Sprite):
-    def __init__(self, pos):
+    def __init__(self, pos, direction, power):
         super(Cat, self).__init__(pos, textures['cat'])
-        verlet_init(self, vec2(-20, 0))
+        verlet_init(self, power * direction)
+
+    def force_of_gravity(self, body):
+        d = body.pos - self.pos
+        r = length(d) / 1000
+        return 10*normalize(d) / (r * r)
 
     def on_tick(self):
         t = bacon.timestep
-        G = 60
-        earth_G = t * G * normalize(earth.pos - self.pos)
-        moon_G = 0.15 * t * G * normalize(moon.pos - self.pos)
-        verlet_step(self, earth_G + moon_G)
+        t = 1/60.
+        G = 3600
+        # earth_G = t2 * G * normalize(earth.pos - self.pos)
+        # moon_G = 0.15 * t2 * G * normalize(moon.pos - self.pos)
+        earth_G = self.force_of_gravity(earth)
+        moon_G = self.force_of_gravity(moon)
+        a = earth_G + moon_G
+        verlet_step(self, a * t * t)
 
 class Game(bacon.Game):
     def __init__(self):
         self.cats = []
         self.down = False
+        self.power = 12
 
     def on_key(self, key, value):
         if value:
@@ -90,11 +102,26 @@ class Game(bacon.Game):
         if button == bacon.MouseButtons.left and not pressed: 
             self.down = False
 
+    def on_mouse_scroll(self, dx, dy):
+        isUp = dy == 1.0
+        if isUp:
+            self.power += 1
+        else:
+            self.power -= 1
+
     def on_tick(self):
-        bacon.clear(0.2, 0.2, 0.2, 1.0)
+        bacon.clear(0.1, 0.1, 0.1, 1.0)
+
+        bacon.draw_string(font, 'Power: %d' % self.power, 
+            x=0, y=0,
+            align=bacon.Alignment.left,
+            vertical_align=bacon.VerticalAlignment.top)
 
         if self.down:
-            self.cats.append(Cat(earth.pos - vec2(0, 50)))
+            direction = normalize(vec2(bacon.mouse.x, bacon.mouse.y) - earth.pos)
+            self.cats.append(Cat(earth.pos + 50*direction, direction, self.power))
+        if len(self.cats) > 200:
+            self.cats = self.cats[10:]
 
         moon.on_tick()
         for cat in self.cats:
@@ -105,7 +132,8 @@ class Game(bacon.Game):
         for cat in self.cats:
             cat.draw()
 
-        # print moon.pos, bacon.window.content_scale
+        to_cursor = normalize(vec2(bacon.mouse.x, bacon.mouse.y) - earth.pos)
+        bacon.draw_line(earth.pos.x, earth.pos.y, earth.pos.x + 100*to_cursor.x, earth.pos.y + 100*to_cursor.y)
 
 earth = Sprite(vec2(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2), textures['earth'])
 moon = Moon(earth, 600)
