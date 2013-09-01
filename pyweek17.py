@@ -1,14 +1,20 @@
 import sys
 import math
 import bacon
+import random
 from vectypes import *
 
 WINDOW_WIDTH = 1920
 WINDOW_HEIGHT = 1200
 
-MOON_DISTANCE = 500
-MOUSE_SPEED = 1
+MOON_DISTANCE = 500.0
+MOUSE_SPEED = 60.0
+MOUSE_SPAWN_COOLDOWN = 4.0
+MOUSE_INITIAL_SPAWN_DELAY = 0.0
+
 CAT_SPAWN_COOLDOWN = 0.3
+
+MOON_SECONDS_PER_ROTATION = 15.0
 
 bacon.window.resizable = True
 # TODO - need to wait for bug to be fixed
@@ -60,15 +66,19 @@ class Moon(Sprite):
         self.earth = earth
         self.distance = distance
         self.angle = 0
-        super(Moon, self).__init__(self.calc_position(), textures['moon'])
+        super(Moon, self).__init__(self.calc_position(self.angle), textures['moon'])
 
     def on_tick(self):
-        self.pos = self.calc_position()
-        self.angle += bacon.timestep / 3.0
+        self.pos = self.calc_position(self.angle)
+
+        self.angle += 2 * math.pi * bacon.timestep / MOON_SECONDS_PER_ROTATION
         self.draw()
 
-    def calc_position(self):
-        return self.earth.pos + rotate(vec2(MOON_DISTANCE, 0), self.angle)
+    def calc_position(self, angle):
+        return self.earth.pos + rotate(vec2(MOON_DISTANCE, 0), angle)
+
+    def future_position(self, t):
+        return self.calc_position(self.angle + t / MOON_SECONDS_PER_ROTATION)
 
 class Cat(Sprite):
     def __init__(self, pos, direction, power):
@@ -97,8 +107,10 @@ class Mouse(Sprite):
         self.dead = False
 
     def on_tick(self):
-        to_moon = normalize(moon.pos - self.pos)
-        self.pos += to_moon * MOUSE_SPEED
+        dist_to_moon = length(moon.pos - self.pos)
+        time_to_moon = dist_to_moon / MOUSE_SPEED
+        to_target = normalize(moon.future_position(time_to_moon) - self.pos)
+        self.pos += to_target * MOUSE_SPEED * bacon.timestep
 
 class CatSpawner(object):
     def __init__(self):
@@ -127,7 +139,7 @@ class Game(bacon.Game):
         self.cats = []
         self.mice = []
         self.down = False
-        self.spawn_timer = 1
+        self.spawn_timer = MOUSE_INITIAL_SPAWN_DELAY
         self.cat_spawner = CatSpawner()
 
     def on_key(self, key, value):
@@ -162,6 +174,18 @@ class Game(bacon.Game):
         self.cats[:] = [c for c in self.cats if not c.dead]
         self.mice[:] = [m for m in self.mice if not m.dead]
 
+    def find_mouse_spawn(self):
+        i = random.uniform(0, 2*WINDOW_WIDTH + 2*WINDOW_HEIGHT-1)
+        if i < WINDOW_WIDTH:  return vec2(i, 0)
+        i -= WINDOW_WIDTH
+        if i < WINDOW_WIDTH:  return vec2(i, WINDOW_HEIGHT)
+        i -= WINDOW_WIDTH
+        if i < WINDOW_HEIGHT: return vec2(0, i)
+        i -= WINDOW_HEIGHT
+        print i
+        assert i < WINDOW_HEIGHT
+        return vec2(WINDOW_WIDTH, i)
+        
     def on_tick(self):
         bacon.clear(0.1, 0.1, 0.1, 1.0)
 
@@ -180,8 +204,8 @@ class Game(bacon.Game):
         self.spawn_timer -= bacon.timestep
 
         if self.spawn_timer < 0:
-            self.spawn_timer = 5
-            self.mice.append(Mouse(vec2(100, 100)))
+            self.spawn_timer = MOUSE_SPAWN_COOLDOWN
+            self.mice.append(Mouse(self.find_mouse_spawn()))
 
         moon.on_tick()
         for cat in self.cats:
