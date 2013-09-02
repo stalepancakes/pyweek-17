@@ -21,6 +21,7 @@ bacon.window.fullscreen = True
 bacon.window.target = bacon.Image(width=1920, height=1200, atlas=0)
 
 textures = {
+    'catapult': bacon.Image('res/catapult.png'),
     'earth': bacon.Image('res/earth.png'),
     'mouse': bacon.Image('res/mouse.png'),
     'moon': bacon.Image('res/moon.png'),
@@ -28,6 +29,9 @@ textures = {
 }
 
 font = bacon.Font(None, 16)
+
+def clamp(v, a, b):
+    return min(b, max(a, v))
 
 def rotate(v, angle):
     s = math.sin(angle)
@@ -45,8 +49,6 @@ class Sprite(object):
     def __init__(self, pos, image):
         self.pos = pos
         self.image = image
-        assert image.height == image.width
-        self.radius = image.width / 2
 
     def draw(self):
         ox = self.image.width / 2
@@ -57,10 +59,15 @@ class Sprite(object):
         bacon.draw_image(self.image, -ox, -oy)
         bacon.pop_transform()
 
+class RoundSprite(Sprite):
+    def __init__(self, pos, image):
+        super(RoundSprite, self).__init__(pos, image)
+        self.radius = image.width / 2
+
     def collides_with(self, thing):
         return length(self.pos - thing.pos) < self.radius + thing.radius
 
-class Moon(Sprite):
+class Moon(RoundSprite):
     def __init__(self, earth, distance):
         self.earth = earth
         self.distance = distance
@@ -80,7 +87,7 @@ class Moon(Sprite):
     def future_position(self, t):
         return self.calc_position(self.angle + t / MOON_SECONDS_PER_ROTATION)
 
-class Cat(Sprite):
+class Cat(RoundSprite):
     def __init__(self, pos, direction, power):
         super(Cat, self).__init__(pos, textures['cat'])
         self.dead = False
@@ -98,10 +105,10 @@ class Cat(Sprite):
         G = 3600
         earth_G = self.force_of_gravity(earth)
         moon_G = self.force_of_gravity(moon)
-        a = earth_G + moon_G
+        a = earth_G + moon_G 
         verlet_step(self, a * t * t)
 
-class Mouse(Sprite):
+class Mouse(RoundSprite):
     def __init__(self, pos):
         super(Mouse, self).__init__(pos, textures['mouse'])
         self.dead = False
@@ -110,32 +117,55 @@ class Mouse(Sprite):
         time_to_moon = 0
         for i in range(5):
             time_to_moon = length(moon.future_position(time_to_moon) - self.pos) / MOUSE_SPEED
-            f = moon.future_position(time_to_moon)
-            bacon.draw_line(self.pos.x, self.pos.y, f.x, f.y)
+            # f = moon.future_position(time_to_moon)
+            # bacon.draw_line(self.pos.x, self.pos.y, f.x, f.y)
 
         to_target = normalize(moon.future_position(time_to_moon) - self.pos)
         self.pos += to_target * MOUSE_SPEED * bacon.timestep
 
+class Catapult(Sprite):
+    def __init__(self):
+        super(Catapult, self).__init__(vec2(0, 0), textures['catapult'])
+        self.pos = earth.pos - vec2(0, earth.radius) - vec2(0, -5 + self.image.height / 2)
+
 class CatSpawner(object):
     def __init__(self):
         self.cooldown = 0
-        self.launch_power = 12
+        self.pos = catapult.pos - vec2(0, 10)
 
+    def direction(self):
+        return normalize(vec2(bacon.mouse.x, bacon.mouse.y) - self.pos)
+    def launch_power(self):
+        # draw from x to y
+        # power is from a to b
+        l = length(vec2(bacon.mouse.x, bacon.mouse.y) - self.pos)
+
+        x = 20.0
+        y = 150.0
+        a = 4.0
+        b = 18.0
+
+        l = clamp(l, x, y)
+        return a + (b - a) * ((l - x) / (y - x))
+    
     def try_spawn(self, game):
         if self.cooldown <= 0:
-            direction = normalize(vec2(bacon.mouse.x, bacon.mouse.y) - earth.pos)
-            offset = (earth.radius + textures['cat'].width / 2 + 1) * direction
-            game.cats.append(Cat(earth.pos + offset, direction, self.launch_power))
+            offset = (earth.radius + textures['cat'].width / 2 + 1) * self.direction()
+            pos = self.pos
+            game.cats.append(Cat(pos, self.direction(), self.launch_power()))
             self.cooldown = CAT_SPAWN_COOLDOWN
 
     def on_tick(self, game):
         if bacon.mouse.left:
             self.try_spawn(game)
 
-        bacon.draw_string(font, 'Power: %d' % self.launch_power, 
+        bacon.draw_string(font, 'Power: %d' % self.launch_power(), 
             x=0, y=0,
             align=bacon.Alignment.left,
             vertical_align=bacon.VerticalAlignment.top)
+
+        line_end = self.pos + self.launch_power() * 8 * self.direction()
+        bacon.draw_line(self.pos.x, self.pos.y, line_end.x, line_end.y)
 
         self.cooldown -= bacon.timestep
 
@@ -146,6 +176,7 @@ class Game(bacon.Game):
         self.down = False
         self.spawn_timer = MOUSE_INITIAL_SPAWN_DELAY
         self.cat_spawner = CatSpawner()
+        self.catapult = Catapult()
 
     def on_key(self, key, value):
         if value:
@@ -153,9 +184,6 @@ class Game(bacon.Game):
                 sys.exit()
             elif key == bacon.Keys.f:
                 bacon.window.fullscreen = not bacon.window.fullscreen
-
-    def on_mouse_scroll(self, dx, dy):
-        self.cat_spawner.launch_power += dy
 
     def handle_collision(self):
         for c in self.cats:
@@ -189,8 +217,6 @@ class Game(bacon.Game):
     def on_tick(self):
         bacon.clear(0.1, 0.1, 0.1, 1.0)
 
-        self.cat_spawner.on_tick(self)
-
         bacon.draw_string(font, 'spawn_timer: %f' % self.spawn_timer, 
             x=0, y=20,
             align=bacon.Alignment.left,
@@ -216,10 +242,10 @@ class Game(bacon.Game):
             mouse.draw()
         earth.draw()
         moon.draw()
+        catapult.draw()
+        self.cat_spawner.on_tick(self)
 
-        line_end = earth.pos + (100+self.cat_spawner.launch_power*4) * normalize(vec2(bacon.mouse.x, bacon.mouse.y) - earth.pos)
-        bacon.draw_line(earth.pos.x, earth.pos.y, line_end.x, line_end.y)
-
-earth = Sprite(vec2(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2), textures['earth'])
+earth = RoundSprite(vec2(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2), textures['earth'])
 moon = Moon(earth, 600)
+catapult = Catapult()
 bacon.run(Game())

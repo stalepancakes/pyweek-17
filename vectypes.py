@@ -6798,7 +6798,11 @@ def cross(a, b):
         a.x * b.y - b.x * a.y)
 
 def normalize(v):
-    return v / length(v)
+    l = length(v)
+    if l != 0:
+        return v / length(v)
+    else:
+        return v
 
 def faceforward(N, I, Nref):
     if dot(Nref, I) < 0:
