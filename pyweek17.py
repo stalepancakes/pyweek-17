@@ -68,7 +68,8 @@ class Moon(Sprite):
         super(Moon, self).__init__(self.calc_position(self.angle), textures['moon'])
 
     def on_tick(self):
-        self.pos = self.calc_position(self.angle)
+        #self.pos = self.calc_position(self.angle)
+        self.pos = self.future_position(bacon.timestep)
 
         self.angle += 2 * math.pi * bacon.timestep / MOON_SECONDS_PER_ROTATION
         self.draw()
@@ -106,8 +107,12 @@ class Mouse(Sprite):
         self.dead = False
 
     def on_tick(self):
-        dist_to_moon = length(moon.pos - self.pos)
-        time_to_moon = dist_to_moon / MOUSE_SPEED
+        time_to_moon = 0
+        for i in range(5):
+            time_to_moon = length(moon.future_position(time_to_moon) - self.pos) / MOUSE_SPEED
+            f = moon.future_position(time_to_moon)
+            bacon.draw_line(self.pos.x, self.pos.y, f.x, f.y)
+
         to_target = normalize(moon.future_position(time_to_moon) - self.pos)
         self.pos += to_target * MOUSE_SPEED * bacon.timestep
 
