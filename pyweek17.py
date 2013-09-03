@@ -74,12 +74,19 @@ class Moon(RoundSprite):
         self.angle = 0
         super(Moon, self).__init__(self.calc_position(self.angle), textures['moon'])
 
-    def on_tick(self):
-        #self.pos = self.calc_position(self.angle)
-        self.pos = self.future_position(bacon.timestep)
+    def clone(self):
+        m = Moon(self.earth, self.distance)
+        m.pos = self.pos
+        m.angle = self.angle
+        return m
 
-        self.angle += 2 * math.pi * bacon.timestep / MOON_SECONDS_PER_ROTATION
+    def on_tick(self):
+        self.update_by(bacon.timestep)
         self.draw()
+
+    def update_by(self, t):
+        self.pos = self.future_position(t)
+        self.angle += 2 * math.pi * t / MOON_SECONDS_PER_ROTATION
 
     def calc_position(self, angle):
         return self.earth.pos + rotate(vec2(MOON_DISTANCE, 0), angle)
@@ -102,10 +109,12 @@ class Cat(RoundSprite):
         # TODO - do fixed timestep properly
         t = bacon.timestep
         t = 1/60.
-        G = 3600
+        self.update_by(t, earth, moon)
+
+    def update_by(self, t, earth, moon):
         earth_G = self.force_of_gravity(earth)
         moon_G = self.force_of_gravity(moon)
-        a = earth_G + moon_G 
+        a = earth_G + moon_G
         verlet_step(self, a * t * t)
 
 class Mouse(RoundSprite):
@@ -151,8 +160,7 @@ class CatSpawner(object):
     def try_spawn(self, game):
         if self.cooldown <= 0:
             offset = (earth.radius + textures['cat'].width / 2 + 1) * self.direction()
-            pos = self.pos
-            game.cats.append(Cat(pos, self.direction(), self.launch_power()))
+            game.cats.append(Cat(self.pos, self.direction(), self.launch_power()))
             self.cooldown = CAT_SPAWN_COOLDOWN
 
     def on_tick(self, game):
@@ -168,6 +176,25 @@ class CatSpawner(object):
         bacon.draw_line(self.pos.x, self.pos.y, line_end.x, line_end.y)
 
         self.cooldown -= bacon.timestep
+
+        self.simulate_launch()
+
+    def simulate_launch(self):
+        f_moon = moon.clone()
+        cat = Cat(self.pos, self.direction(), self.launch_power())
+        v = []
+        for i in range(100):
+            v.append(cat.pos)
+            dt = 1 / 60.0
+            f_moon.update_by(dt)
+            cat.update_by(dt, earth, f_moon)
+        
+        bacon.push_color()
+        bacon.set_color(0.4,0.4,0.4,1.0)
+        for i in range(1, len(v)):
+            bacon.draw_line(v[i].x, v[i].y, v[i-1].x, v[i-1].y)
+        bacon.pop_color()
+
 
 class Game(bacon.Game):
     def __init__(self):
