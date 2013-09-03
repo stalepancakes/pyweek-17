@@ -12,6 +12,7 @@ MOUSE_SPEED = 60.0
 MOUSE_SPAWN_COOLDOWN = 4.0
 MOUSE_INITIAL_SPAWN_DELAY = 1.0
 CAT_SPAWN_COOLDOWN = 0.3
+CAT_ATTACK_RANGE = 100
 
 EARTH_RADIUS = 75
 MOON_SECONDS_PER_ROTATION = 15.0
@@ -67,6 +68,14 @@ class RoundSprite(Sprite):
     def collides_with(self, thing):
         return length(self.pos - thing.pos) < self.radius + thing.radius
 
+class BoundedSphere(object):
+    def __init__(self, pos, radius):
+        self.pos = pos
+        self.radius = radius
+
+    def collides_with(self, thing):
+        return length(self.pos - thing.pos) < self.radius + thing.radius
+
 class Moon(RoundSprite):
     def __init__(self, earth, distance):
         self.earth = earth
@@ -98,6 +107,9 @@ class Cat(RoundSprite):
     def __init__(self, pos, direction, power):
         super(Cat, self).__init__(pos, textures['cat'])
         self.dead = False
+        self.target = None
+        self.attack_speed = 0
+        self.attack_sphere = BoundedSphere(self.pos, CAT_ATTACK_RANGE)
         verlet_init(self, power * direction)
 
     def force_of_gravity(self, body):
@@ -112,10 +124,23 @@ class Cat(RoundSprite):
         self.update_by(t, earth, moon)
 
     def update_by(self, t, earth, moon):
-        earth_G = self.force_of_gravity(earth)
-        moon_G = self.force_of_gravity(moon)
-        a = earth_G + moon_G
-        verlet_step(self, a * t * t)
+        if self.target is None:
+            earth_G = self.force_of_gravity(earth)
+            moon_G = self.force_of_gravity(moon)
+            a = earth_G + moon_G
+            verlet_step(self, a * t * t)
+            self.attack_sphere.pos = self.pos
+        else:
+            to_target = normalize(self.target.pos - self.pos)
+            self.pos += to_target * self.attack_speed * t
+            self.last_pos = self.pos
+            if self.target.dead:
+                self.dead = True
+
+    def mouse_in_attack_range(self, mouse):
+        if self.target is None:
+            self.target = mouse
+            self.attack_speed = (1/bacon.timestep) * length(self.pos - self.last_pos)
 
 class Mouse(RoundSprite):
     def __init__(self, pos):
@@ -221,11 +246,13 @@ class Game(bacon.Game):
             if m.collides_with(earth) or m.collides_with(moon):
                 m.dead = True
 
-        for x in self.cats:
-            for y in self.mice:
-                if x.collides_with(y):
-                    x.dead = True
-                    y.dead = True
+        for cat in self.cats:
+            for mouse in self.mice:
+                if cat.attack_sphere.collides_with(mouse):
+                    cat.mouse_in_attack_range(mouse)
+                if cat.collides_with(mouse):
+                    cat.dead = True
+                    mouse.dead = True
 
         self.cats[:] = [c for c in self.cats if not c.dead]
         self.mice[:] = [m for m in self.mice if not m.dead]
