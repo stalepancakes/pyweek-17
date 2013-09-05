@@ -17,6 +17,11 @@ CAT_ATTACK_RANGE = 100
 EARTH_RADIUS = 75
 MOON_SECONDS_PER_ROTATION = 15.0
 
+MOON_HEALTHBAR_OFFSET = 0 
+MOON_HEALTHBAR_HEIGHT = 2
+
+MOUSE_DAMAGE = 0.1
+
 bacon.window.resizable = True
 bacon.window.fullscreen = True
 bacon.window.target = bacon.Image(width=1920, height=1200, atlas=0)
@@ -52,8 +57,7 @@ class Sprite(object):
         self.image = image
 
     def draw(self):
-        ox = self.image.width / 2
-        oy = self.image.height / 2
+        ox, oy = self.image.width / 2, self.image.height / 2
 
         bacon.push_transform()
         bacon.translate(self.pos.x, self.pos.y)
@@ -81,6 +85,7 @@ class Moon(RoundSprite):
         self.earth = earth
         self.distance = distance
         self.angle = 0
+        self.health = 1.0
         super(Moon, self).__init__(self.calc_position(self.angle), textures['moon'])
 
     def clone(self):
@@ -89,9 +94,21 @@ class Moon(RoundSprite):
         m.angle = self.angle
         return m
 
+    def draw(self):
+        super(Moon, self).draw()
+        healthbar_x = self.pos.x - self.image.width / 2
+        healthbar_w = self.image.width
+        healthbar_mid = healthbar_x + self.health * healthbar_w
+        healthbar_y = self.pos.y - self.image.height / 2 - MOON_HEALTHBAR_OFFSET
+        bacon.push_color()
+        bacon.set_color(1,0,0,1)
+        bacon.draw_rect(healthbar_mid, healthbar_y, healthbar_x + healthbar_w, healthbar_y + MOON_HEALTHBAR_HEIGHT)
+        bacon.set_color(0,1,0,1)
+        bacon.draw_rect(healthbar_x, healthbar_y, healthbar_mid, healthbar_y + MOON_HEALTHBAR_HEIGHT)
+        bacon.pop_color()
+
     def on_tick(self):
         self.update_by(bacon.timestep)
-        self.draw()
 
     def update_by(self, t):
         self.pos = self.future_position(t)
@@ -102,6 +119,12 @@ class Moon(RoundSprite):
 
     def future_position(self, t):
         return self.calc_position(self.angle + t / MOON_SECONDS_PER_ROTATION)
+
+    def take_damage(self, amount):
+        self.health -= amount
+        if self.health < 0:
+            print 'GAME OVER'
+            sys.exit(0)
 
 class Cat(RoundSprite):
     def __init__(self, pos, direction, power):
@@ -174,10 +197,10 @@ class CatSpawner(object):
         # power is from a to b
         l = length(vec2(bacon.mouse.x, bacon.mouse.y) - self.pos)
 
-        x = 20.0
-        y = 150.0
+        x = 50.0
+        y = 350.0
         a = 4.0
-        b = 18.0
+        b = 14.0
 
         l = clamp(l, x, y)
         return a + (b - a) * ((l - x) / (y - x))
@@ -192,6 +215,10 @@ class CatSpawner(object):
         if bacon.mouse.left:
             self.try_spawn(game)
 
+        self.cooldown -= bacon.timestep
+
+
+    def draw(self, game):
         bacon.draw_string(font, 'Power: %d' % self.launch_power(), 
             x=0, y=0,
             align=bacon.Alignment.left,
@@ -199,9 +226,6 @@ class CatSpawner(object):
 
         line_end = self.pos + self.launch_power() * 8 * self.direction()
         bacon.draw_line(self.pos.x, self.pos.y, line_end.x, line_end.y)
-
-        self.cooldown -= bacon.timestep
-
         self.simulate_launch()
 
     def simulate_launch(self):
@@ -243,7 +267,10 @@ class Game(bacon.Game):
                 c.dead = True
 
         for m in self.mice:
-            if m.collides_with(earth) or m.collides_with(moon):
+            if m.collides_with(earth):
+                m.dead = True
+            elif m.collides_with(moon):
+                moon.take_damage(MOUSE_DAMAGE)
                 m.dead = True
 
         for cat in self.cats:
@@ -276,6 +303,23 @@ class Game(bacon.Game):
             align=bacon.Alignment.left,
             vertical_align=bacon.VerticalAlignment.top)
 
+        steps = 1
+        if bacon.Keys.space in bacon.keys:
+            steps = 8
+
+        for i in range(steps):
+            self.update_state()
+
+        for cat in self.cats:
+            cat.draw()
+        for mouse in self.mice:
+            mouse.draw()
+        earth.draw()
+        moon.draw()
+        catapult.draw()
+        self.cat_spawner.draw(self)
+
+    def update_state(self):
         self.handle_collision()
 
         if len(self.cats) > 200:
@@ -290,14 +334,10 @@ class Game(bacon.Game):
         moon.on_tick()
         for cat in self.cats:
             cat.on_tick()
-            cat.draw()
         for mouse in self.mice:
             mouse.on_tick()
-            mouse.draw()
-        earth.draw()
-        moon.draw()
-        catapult.draw()
         self.cat_spawner.on_tick(self)
+
 
 earth = RoundSprite(vec2(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2), textures['earth'])
 moon = Moon(earth, 600)
