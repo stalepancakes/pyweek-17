@@ -39,7 +39,7 @@ textures = {
     'cat': bacon.Image('res/cat.png')
 }
 
-moon_eated_states = [100, 75, 50, 25, 5]
+moon_eated_states = [100, 75, 50, 25, 15, 5]
 
 font_16 = bacon.Font(None, 16)
 font_24 = bacon.Font(None, 24)
@@ -139,7 +139,7 @@ class Moon(RoundSprite):
                 break
 
         if self.health < 0:
-            scene.game = GameOverScreen(self)
+            scene.game = GameOverScreen(scene.game)
 
 class Cat(RoundSprite):
     def __init__(self, pos, direction, power):
@@ -429,7 +429,7 @@ class GameOverScreen(bacon.Game):
 
             if self.t > 0:
                 self.t -= bacon.timestep / GAME_OVER_FADETEXT
-                
+
             if self.state == "game-over" and self.t <= 0:
                 self.t = 1
                 self.state = "game-over-score"
