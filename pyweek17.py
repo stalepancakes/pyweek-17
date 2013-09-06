@@ -34,7 +34,8 @@ textures = {
     'cat': bacon.Image('res/cat.png')
 }
 
-font = bacon.Font(None, 16)
+font_16 = bacon.Font(None, 16)
+font_24 = bacon.Font(None, 24)
 
 def clamp(v, a, b):
     return min(b, max(a, v))
@@ -219,7 +220,7 @@ class CatSpawner(object):
 
 
     def draw(self, game):
-        bacon.draw_string(font, 'Power: %d' % self.launch_power(), 
+        bacon.draw_string(font_16, 'Power: %d' % self.launch_power(), 
             x=0, y=0,
             align=bacon.Alignment.left,
             vertical_align=bacon.VerticalAlignment.top)
@@ -256,6 +257,7 @@ class Game(bacon.Game):
         self.spawn_timer = MOUSE_INITIAL_SPAWN_DELAY
         self.cat_spawner = CatSpawner()
         self.catapult = Catapult()
+        self.score = 0
 
     def on_key(self, key, value):
         if value:
@@ -283,6 +285,7 @@ class Game(bacon.Game):
                 if cat.collides_with(mouse):
                     cat.dead = True
                     mouse.dead = True
+                    self.score += 5
 
         self.cats[:] = [c for c in self.cats if not c.dead]
         self.mice[:] = [m for m in self.mice if not m.dead]
@@ -301,9 +304,14 @@ class Game(bacon.Game):
     def on_tick(self):
         bacon.clear(0.1, 0.1, 0.1, 1.0)
 
-        bacon.draw_string(font, 'spawn_timer: %f' % self.spawn_timer, 
+        bacon.draw_string(font_16, 'spawn_timer: %f' % self.spawn_timer, 
             x=0, y=20,
             align=bacon.Alignment.left,
+            vertical_align=bacon.VerticalAlignment.top)
+
+        bacon.draw_string(font_24, 'Score: %d' % self.score,
+            x=WINDOW_WIDTH/2, y=0,
+            align=bacon.Alignment.center,
             vertical_align=bacon.VerticalAlignment.top)
 
         steps = 1
