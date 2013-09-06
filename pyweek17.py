@@ -22,6 +22,11 @@ MOON_HEALTHBAR_HEIGHT = 2
 
 MOUSE_DAMAGE = 0.1
 
+GAME_OVER_FADE = 2.0
+GAME_OVER_FADETEXT = 1.0
+GAME_OVER_GRAVITY = 3.5
+GAME_OVER_AFTERFADE_WAIT = 0.3
+
 bacon.window.resizable = True
 bacon.window.fullscreen = True
 bacon.window.target = bacon.Image(width=1920, height=1200, atlas=0)
@@ -34,8 +39,11 @@ textures = {
     'cat': bacon.Image('res/cat.png')
 }
 
+moon_eated_states = [100, 75, 50, 25, 5]
+
 font_16 = bacon.Font(None, 16)
 font_24 = bacon.Font(None, 24)
+font_72 = bacon.Font(None, 72)
 
 def clamp(v, a, b):
     return min(b, max(a, v))
@@ -123,9 +131,15 @@ class Moon(RoundSprite):
 
     def take_damage(self, amount):
         self.health -= amount
+        print 'moon health is now:', self.health * 100
+
+        for v in moon_eated_states:
+            if self.health > v / 100.0:
+                self.image = bacon.Image('res/moon%d.png' % v)
+                break
+
         if self.health < 0:
-            print 'GAME OVER'
-            sys.exit(0)
+            scene.game = GameOverScreen(self)
 
 class Cat(RoundSprite):
     def __init__(self, pos, direction, power):
@@ -261,10 +275,8 @@ class Game(bacon.Game):
 
     def on_key(self, key, value):
         if value:
-            if key == bacon.Keys.q:
-                sys.exit()
-            elif key == bacon.Keys.f:
-                bacon.window.fullscreen = not bacon.window.fullscreen
+            if key == bacon.Keys.w:
+                scene.game = GameOverScreen(self)
 
     def handle_collision(self):
         for c in self.cats:
@@ -302,8 +314,7 @@ class Game(bacon.Game):
         return vec2(WINDOW_WIDTH, i)
         
     def on_tick(self):
-        bacon.clear(0.1, 0.1, 0.1, 1.0)
-
+        bacon.clear(0.1, 0.1, 0.1, 0.0)
         bacon.draw_string(font_16, 'spawn_timer: %f' % self.spawn_timer, 
             x=0, y=20,
             align=bacon.Alignment.left,
@@ -349,8 +360,102 @@ class Game(bacon.Game):
             mouse.on_tick()
         self.cat_spawner.on_tick(self)
 
+class GameOverScreen(bacon.Game):
+    def __init__(self, game):
+        self.game = game
+        self.t = 0
+        self.fade_image = None
+        self.y = 0
+        self.yvel = 0
+
+        self.state = "fade-in"
+        
+    def on_tick(self):
+        bacon.clear(0.1, 0.1, 0.1, 0.0)
+        bacon.clear(0,0,0,0)
+
+        if self.fade_image is None:
+            self.fade_image = bacon.Image(width = WINDOW_WIDTH, height = WINDOW_HEIGHT)
+            bacon.push_target(self.fade_image)
+            self.game.on_tick()
+            bacon.pop_target()
+
+        if self.state == "fade-in":
+            self.t += bacon.timestep / GAME_OVER_FADE
+            self.yvel += bacon.timestep * GAME_OVER_GRAVITY
+            self.y += self.yvel
+
+            bacon.push_color()
+            bacon.set_color(0.1, 0.1, 0.1, 1)
+            bacon.fill_rect(0,0, WINDOW_WIDTH, self.y)
+            bacon.pop_color()
+
+            bacon.draw_image(self.fade_image, 0, self.y)
+
+            bacon.push_color()
+            bacon.set_color(0,0,0, self.smoothstep(self.t))
+            bacon.fill_rect(0,0, WINDOW_WIDTH, WINDOW_HEIGHT)
+            bacon.pop_color()
+
+            if self.t > 1:
+                self.state = "pre-game-over"
+                self.t = GAME_OVER_AFTERFADE_WAIT
+
+        elif self.state == "pre-game-over":
+            self.t -= bacon.timestep
+            if self.t <= 0:
+                self.state = "game-over"
+                self.t = 1
+
+        elif self.state == "game-over" or self.state == "game-over-score":
+            bacon.draw_string(font_72, 'GAME OVER',
+                x=WINDOW_WIDTH/2, y=WINDOW_HEIGHT/2,
+                align=bacon.Alignment.center,
+                vertical_align=bacon.VerticalAlignment.center)
+
+            if self.state == "game-over-score":
+                bacon.draw_string(font_24, 'SCORE: %d' % self.game.score,
+                    x=WINDOW_WIDTH/2, y=WINDOW_HEIGHT/2 + 72,
+                    align=bacon.Alignment.center,
+                    vertical_align=bacon.VerticalAlignment.center)
+
+            bacon.push_color()
+            bacon.set_color(0,0,0, self.smoothstep(self.t))
+            if self.state == "game-over":
+                bacon.fill_rect(0,0, WINDOW_WIDTH, WINDOW_HEIGHT)
+            else:
+                bacon.fill_rect(0, WINDOW_HEIGHT/2+36, WINDOW_WIDTH, WINDOW_HEIGHT)
+            bacon.pop_color()
+
+            if self.t > 0:
+                self.t -= bacon.timestep / GAME_OVER_FADETEXT
+                
+            if self.state == "game-over" and self.t <= 0:
+                self.t = 1
+                self.state = "game-over-score"
+
+    def smoothstep(self, t):
+        return 3*t*t - 2*t*t*t
+
+class SceneDispatcher(bacon.Game):
+    def __init__(self, game):
+        self.game = game
+
+    def on_tick(self):
+        self.game.on_tick()
+
+    def on_key(self, key, value):
+        if value:
+            if key == bacon.Keys.q:
+                sys.exit()
+                return
+            elif key == bacon.Keys.f:
+                bacon.window.fullscreen = not bacon.window.fullscreen
+                return
+        self.game.on_key(key, value)
 
 earth = RoundSprite(vec2(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2), textures['earth'])
 moon = Moon(earth, 600)
 catapult = Catapult()
-bacon.run(Game())
+scene = SceneDispatcher(Game())
+bacon.run(scene)
