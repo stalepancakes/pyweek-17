@@ -198,7 +198,7 @@ class CatSpawner(object):
         l = length(vec2(bacon.mouse.x, bacon.mouse.y) - self.pos)
 
         x = 50.0
-        y = 350.0
+        y = 450.0
         a = 4.0
         b = 14.0
 
@@ -224,24 +224,27 @@ class CatSpawner(object):
             align=bacon.Alignment.left,
             vertical_align=bacon.VerticalAlignment.top)
 
-        line_end = self.pos + self.launch_power() * 8 * self.direction()
-        bacon.draw_line(self.pos.x, self.pos.y, line_end.x, line_end.y)
         self.simulate_launch()
 
     def simulate_launch(self):
         f_moon = moon.clone()
         cat = Cat(self.pos, self.direction(), self.launch_power())
         v = []
-        for i in range(100):
+        TOTAL_STEPS = 100
+        for i in range(TOTAL_STEPS):
             v.append(cat.pos)
             dt = 1 / 60.0
             f_moon.update_by(dt)
             cat.update_by(dt, earth, f_moon)
+            if cat.collides_with(f_moon) or cat.collides_with(earth):
+                break
         
         bacon.push_color()
-        bacon.set_color(0.4,0.4,0.4,1.0)
+        c = 0.4
         for i in range(1, len(v)):
+            bacon.set_color(c, c, c, 0)
             bacon.draw_line(v[i].x, v[i].y, v[i-1].x, v[i-1].y)
+            c -= 0.4 * (1.0 / TOTAL_STEPS)
         bacon.pop_color()
 
 
