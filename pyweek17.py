@@ -10,6 +10,7 @@ WINDOW_HEIGHT = 1200
 MOON_DISTANCE = 500.0
 MOUSE_SPEED = 60.0
 MOUSE_SPAWN_COOLDOWN = 4.0
+MOUSE_SPAWN_DECREASE = lambda m: 2 * math.log(m + 1, 10)
 MOUSE_INITIAL_SPAWN_DELAY = 1.0
 CAT_SPAWN_COOLDOWN = 0.3
 CAT_ATTACK_RANGE = 50
@@ -48,7 +49,9 @@ textures = {
 sounds = {
     'squeak': bacon.Sound('res/squeak.wav'),
     'explosion': bacon.Sound('res/explosion.wav'),
-    'catapult': bacon.Sound('res/catapult.wav')
+    'catapult': bacon.Sound('res/catapult.wav'),
+    'thud0': bacon.Sound('res/thud0.wav'),
+    'thud1': bacon.Sound('res/thud1.wav'),
 }
 
 moon_eated_states = [100, 75, 50, 25, 15, 5]
@@ -323,6 +326,7 @@ class Game(bacon.Game):
         self.cat_spawner = CatSpawner()
         self.catapult = Catapult()
         self.score = 0
+        self.mouse_spawn_count = 0
 
     def on_key(self, key, value):
         if value:
@@ -330,13 +334,17 @@ class Game(bacon.Game):
                 scene.game = GameOverScreen(self)
 
     def handle_collision(self):
+        def play_thud():
+            sounds[random.choice(['thud0', 'thud1'])].play()
         for c in self.cats:
             if c.collides_with(earth) or c.collides_with(moon):
                 c.dead = True
+                play_thud()
 
         for m in self.mice:
             if m.collides_with(earth):
                 m.dead = True
+                play_thud()
             elif m.collides_with(moon):
                 moon.take_damage(MOUSE_DAMAGE)
                 m.dead = True
@@ -402,7 +410,8 @@ class Game(bacon.Game):
         self.spawn_timer -= bacon.timestep
 
         if self.spawn_timer < 0:
-            self.spawn_timer = MOUSE_SPAWN_COOLDOWN
+            self.spawn_timer = MOUSE_SPAWN_COOLDOWN - MOUSE_SPAWN_DECREASE(self.mouse_spawn_count)
+            self.mouse_spawn_count += 1
             self.mice.append(Mouse(self.find_mouse_spawn()))
 
         moon.on_tick()
