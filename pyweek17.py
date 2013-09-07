@@ -163,6 +163,7 @@ class Cat(RoundSprite):
         self.target = None
         self.attack_speed = 0
         self.attack_sphere = BoundedSphere(self.pos, CAT_ATTACK_RANGE)
+        self.rotate_speed = rotation
         verlet_init(self, power * direction)
 
     def force_of_gravity(self, body):
@@ -184,6 +185,8 @@ class Cat(RoundSprite):
             a = earth_G + moon_G
             verlet_step(self, a * t * t)
             self.attack_sphere.pos = self.pos
+
+            self.rotation += self.rotate_speed * bacon.timestep
         else:
             to_target = normalize(self.target.pos - self.pos)
             self.pos += to_target * self.attack_speed * t
@@ -303,9 +306,9 @@ class CatSpawner(object):
         l = length(vec2(bacon.mouse.x, bacon.mouse.y) - self.pos)
 
         x = 50.0
-        y = 650.0
-        a = 4.0
-        b = 14.0
+        y = 750.0
+        a = 5.0
+        b = 10.0
 
         l = clamp(l, x, y)
         return a + (b - a) * ((l - x) / (y - x))
