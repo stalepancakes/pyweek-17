@@ -27,12 +27,18 @@ GAME_OVER_FADETEXT = 1.0
 GAME_OVER_GRAVITY = 3.5
 GAME_OVER_AFTERFADE_WAIT = 0.3
 
+CATAPULT_FIRE_TIME = 0.15
+
+CATAPULT_START_ANGLE = -30
+CATAPULT_END_ANGLE = 90
+
 bacon.window.resizable = True
 bacon.window.fullscreen = True
 bacon.window.target = bacon.Image(width=1920, height=1200, atlas=0)
 
 textures = {
-    'catapult': bacon.Image('res/catapult.png'),
+    'catapult_frame': bacon.Image('res/catapultframe.png'),
+    'catapult_spoon': bacon.Image('res/spoon.png'),
     'earth': bacon.Image('res/earth.png'),
     'mouse': bacon.Image('res/mouse.png'),
     'moon': bacon.Image('res/moon.png'),
@@ -193,16 +199,53 @@ class Mouse(RoundSprite):
         time_to_moon = 0
         for i in range(5):
             time_to_moon = length(moon.future_position(time_to_moon) - self.pos) / MOUSE_SPEED
-            # f = moon.future_position(time_to_moon)
-            # bacon.draw_line(self.pos.x, self.pos.y, f.x, f.y)
 
         to_target = normalize(moon.future_position(time_to_moon) - self.pos)
         self.pos += to_target * MOUSE_SPEED * bacon.timestep
 
 class Catapult(Sprite):
     def __init__(self):
-        super(Catapult, self).__init__(vec2(0, 0), textures['catapult'])
+        super(Catapult, self).__init__(vec2(0, 0), textures['catapult_frame'])
         self.pos = earth.pos - vec2(0, earth.radius) - vec2(0, -5 + self.image.height / 2)
+        self.arm = textures['catapult_spoon']
+        self.angle = 0
+        self.t = 1
+
+    def on_tick(self):
+        if self.t != 1:
+            self.t += bacon.timestep / CATAPULT_FIRE_TIME
+            self.angle = math.pi * self.interp(self.t, CATAPULT_START_ANGLE, CATAPULT_END_ANGLE) / 180.0
+            if self.t >= 1 or self.angle > self.end_angle:
+                self.t = 1
+                self.on_fling()
+                self.on_fling = None
+
+    def interp(self, t, a, b):
+        return a + t * (b-a)
+
+    def draw(self):
+        super(Catapult, self).draw()
+
+        ox, oy = self.arm.width / 2, self.arm.height / 2
+        bacon.push_transform()
+        bacon.translate(self.pos.x + 17, self.pos.y - 15)
+        bacon.rotate(self.angle)
+        bacon.draw_image(self.arm, -2*ox + 16, -oy)
+        bacon.pop_transform()
+
+        self.angle = 0
+
+    def get_launch_pos(self, direction):
+        end_angle = self.get_end_angle(direction)
+        return self.pos + vec2(17, -15) + rotate(vec2(-self.arm.width + 25, 0), end_angle)
+
+    def get_end_angle(self, direction):
+        return clamp(math.atan2(direction.x, -1 * direction.y), 0, math.pi/2)
+
+    def fling(self, direction, on_fling):
+        self.t = 0
+        self.end_angle = self.get_end_angle(direction)
+        self.on_fling = on_fling
 
 class CatSpawner(object):
     def __init__(self):
@@ -226,17 +269,19 @@ class CatSpawner(object):
     
     def try_spawn(self, game):
         if self.cooldown <= 0:
+            direction = self.direction()
+            launch_power = self.launch_power()
+            pos = catapult.get_launch_pos(direction)
             offset = (earth.radius + textures['cat'].width / 2 + 1) * self.direction()
-            game.cats.append(Cat(self.pos, self.direction(), self.launch_power()))
             self.cooldown = CAT_SPAWN_COOLDOWN
             sounds['catapult'].play()
+            catapult.fling(self.direction(), lambda: game.cats.append(Cat(pos, direction, launch_power)))
 
     def on_tick(self, game):
         if bacon.mouse.left:
             self.try_spawn(game)
 
         self.cooldown -= bacon.timestep
-
 
     def draw(self, game):
         bacon.draw_string(font_16, 'Power: %d' % self.launch_power(), 
@@ -248,7 +293,8 @@ class CatSpawner(object):
 
     def simulate_launch(self):
         f_moon = moon.clone()
-        cat = Cat(self.pos, self.direction(), self.launch_power())
+        pos = catapult.get_launch_pos(self.direction())
+        cat = Cat(pos, self.direction(), self.launch_power())
         v = []
         TOTAL_STEPS = 100
         for i in range(TOTAL_STEPS):
@@ -364,6 +410,8 @@ class Game(bacon.Game):
             cat.on_tick()
         for mouse in self.mice:
             mouse.on_tick()
+
+        catapult.on_tick()
         self.cat_spawner.on_tick(self)
 
 class GameOverScreen(bacon.Game):
