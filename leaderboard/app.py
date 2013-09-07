@@ -9,10 +9,7 @@ debug = False
 app = Flask(__name__)
 heroku = Heroku(app)
 
-if debug:
-	app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///testing.db'
-
-db = create_engine(app.config['SQLALCHEMY_DATABASE_URI'])
+db = create_engine(os.environ.get('HEROKU_POSTGRESQL_WHITE_URL', 'sqlite:///testing.db'))
 
 metadata = MetaData(db)
 scores = Table('scores', metadata,
