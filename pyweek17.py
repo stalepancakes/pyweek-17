@@ -157,6 +157,7 @@ class Cat(RoundSprite):
     def __init__(self, pos, direction, power):
         super(Cat, self).__init__(pos, textures['cat'])
         self.dead = False
+        self.lifetime = 0
         self.target = None
         self.attack_speed = 0
         self.attack_sphere = BoundedSphere(self.pos, CAT_ATTACK_RANGE)
@@ -171,6 +172,7 @@ class Cat(RoundSprite):
         # TODO - do fixed timestep properly
         t = bacon.timestep
         t = 1/60.
+        self.lifetime += t
         self.update_by(t, earth, moon)
 
     def update_by(self, t, earth, moon):
@@ -357,7 +359,7 @@ class Game(bacon.Game):
                     cat.dead = True
                     mouse.dead = True
                     sounds['explosion'].play()
-                    self.score += 5
+                    self.score += 5 + 3*clamp(cat.lifetime - 1, 0, 5)
 
         self.cats[:] = [c for c in self.cats if not c.dead]
         self.mice[:] = [m for m in self.mice if not m.dead]
