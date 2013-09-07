@@ -2,7 +2,7 @@ import os
 from flask import Flask
 from flask.ext.heroku import Heroku
 #from flask.ext.sqlalchemy import SQLAlchemy
-from sqlalchemy import MetaData, Table, Column, Integer, String, create_engine
+from sqlalchemy import *
 
 debug = False
 
@@ -25,11 +25,11 @@ def hello():
 @app.route('/add/<name>/<int:score>')
 def add(name, score):
 	r = scores.insert().execute({'name': name, 'score': score})
-	i = scores.select().where(scores.c.score < score).count().execute().scalar()
+	i = select([func.count()]).where(scores.c.score < score).select_from(scores).execute().scalar()
 
 	# returns a python list literal. Use ast.literal_eval to read
 	v = []
-	for row in scores.select().order_by("score").offset(i-3).limit(6).execute():
+	for row in scores.select().order_by("score").offset(max(0, i-3)).limit(6).execute():
 		v.append("('%s', %d)" % (row['name'], row['score']))
 
 	return "[%s]" % ', '.join(v)
