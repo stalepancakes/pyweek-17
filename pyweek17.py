@@ -12,7 +12,7 @@ MOUSE_SPEED = 60.0
 MOUSE_SPAWN_COOLDOWN = 4.0
 MOUSE_INITIAL_SPAWN_DELAY = 1.0
 CAT_SPAWN_COOLDOWN = 0.3
-CAT_ATTACK_RANGE = 100
+CAT_ATTACK_RANGE = 50
 
 EARTH_RADIUS = 75
 MOON_SECONDS_PER_ROTATION = 15.0
@@ -130,15 +130,12 @@ class Moon(RoundSprite):
         return self.calc_position(self.angle + t / MOON_SECONDS_PER_ROTATION)
 
     def take_damage(self, amount):
-        self.health -= amount
-        print 'moon health is now:', self.health * 100
-
         for v in moon_eated_states:
             if self.health > v / 100.0:
                 self.image = bacon.Image('res/moon%d.png' % v)
+                self.health = v / 100.0
                 break
-
-        if self.health < 0:
+        else:
             scene.game = GameOverScreen(scene.game)
 
 class Cat(RoundSprite):
@@ -213,7 +210,7 @@ class CatSpawner(object):
         l = length(vec2(bacon.mouse.x, bacon.mouse.y) - self.pos)
 
         x = 50.0
-        y = 450.0
+        y = 650.0
         a = 4.0
         b = 14.0
 
