@@ -2,6 +2,7 @@ import sys
 import math
 import bacon
 import random
+import httplib
 from vectypes import *
 
 WINDOW_WIDTH = 1920
@@ -11,7 +12,7 @@ MOON_DISTANCE = 500.0
 MOUSE_SPEED = 60.0
 MOUSE_SPAWN_COOLDOWN = 4.0
 MOUSE_SPAWN_DECREASE = lambda m: 2 * math.log(m + 1, 10)
-MOUSE_INITIAL_SPAWN_DELAY = 1.0
+MOUSE_INITIAL_SPAWN_DELAY = 4.0
 CAT_SPAWN_COOLDOWN = 0.3
 CAT_ATTACK_RANGE = 50
 
@@ -33,6 +34,13 @@ CATAPULT_FIRE_TIME = 0.15
 CATAPULT_START_ANGLE = -30
 CATAPULT_END_ANGLE = 90
 
+CLOUD_LIFETIME = 0.75
+
+GAME_FADEIN_TIME = 0.5
+
+#LEADERBOARD_SERVER = "enigmatic-bayou-2555.herokuapp.com"
+LEADERBOARD_SERVER = "localhost:5000"
+
 bacon.window.resizable = True
 bacon.window.fullscreen = True
 bacon.window.target = bacon.Image(width=1920, height=1200, atlas=0)
@@ -43,8 +51,11 @@ textures = {
     'earth': bacon.Image('res/earth.png'),
     'mouse': bacon.Image('res/mouse.png'),
     'moon': bacon.Image('res/moon.png'),
-    'cat': bacon.Image('res/cat.png')
+    'cat': bacon.Image('res/cat.png'),
+    'background': bacon.Image('res/BG.png')
 }
+
+clouds = [bacon.Image('res/Dust%d.png' % i) for i in range(1, 9)]
 
 sounds = {
     'squeak': bacon.Sound('res/squeak.wav'),
@@ -52,6 +63,7 @@ sounds = {
     'catapult': bacon.Sound('res/catapult.wav'),
     'thud0': bacon.Sound('res/thud0.wav'),
     'thud1': bacon.Sound('res/thud1.wav'),
+    'fight': bacon.Sound('res/fight.wav'),
 }
 
 moon_eated_states = [100, 75, 50, 25, 15, 5]
@@ -67,6 +79,9 @@ def rotate(v, angle):
     s = math.sin(angle)
     c = math.cos(angle)
     return vec2(v.x * c - v.y * s, v.x * s + v.y * c)
+
+def smoothstep(t):
+    return 3*t*t - 2*t*t*t
 
 def verlet_init(o, initial_v):
     assert hasattr(o, 'pos')
@@ -245,37 +260,22 @@ class Catapult(Sprite):
     def interp(self, t, a, b):
         return a + t * (b-a)
 
-    def draw_image(self, img):
+    def draw_image(self, img, pos, sc):
         ox, oy = img.width / 2, img.height / 2
         bacon.push_transform()
-        bacon.translate(self.pos.x + 17, self.pos.y - 15)
+        bacon.translate(pos.x, pos.y)
         bacon.rotate(self.angle)
-        bacon.draw_image(img, -1.5*ox, -oy)
+        bacon.draw_image(img, sc.x*ox, sc.y*oy)
         bacon.pop_transform()
 
     def draw(self):
         super(Catapult, self).draw()
 
-        self.draw_image(self.arm)
+        self.draw_image(self.arm, vec2(self.pos.x + 17, self.pos.y - 15), vec2(-1.5, -1))
 
         if self.state != CatapultState.Reset:
-            #self.draw_image(self.cat)
-            img = self.cat
-            ox, oy = img.width / 2, img.height / 2
-            bacon.push_transform()
-            
             pos = self.get_launch_pos_from_angle(self.angle)
-            #bacon.translate(self.pos.x - 22, self.pos.y - 15)
-            bacon.translate(pos.x, pos.y)
-            bacon.rotate(self.angle)
-            bacon.translate
-            #bacon.rotate(self.angle)
-            if not hasattr(self, 'qq'):
-                self.qq = 0
-            #bacon.rotate(self.qq)
-            self.qq += bacon.timestep
-            bacon.draw_image(img, -ox, -2*oy)
-            bacon.pop_transform()
+            self.draw_image(self.cat, pos, vec2(-1, -2))
 
     def get_launch_pos(self, direction):
         return self.get_launch_pos_from_angle(self.get_end_angle(direction))
@@ -359,17 +359,34 @@ class CatSpawner(object):
             c -= 0.4 * (1.0 / TOTAL_STEPS)
         bacon.pop_color()
 
+class Cloud(Sprite):
+    def __init__(self, pos):
+        super(Cloud, self).__init__(pos, clouds[0])
+        self.life = CLOUD_LIFETIME
+        self.dead = False
+        sounds['fight'].play()
+
+    def on_tick(self):
+        self.life -= bacon.timestep
+        
+        i = (len(clouds)-1) * (CLOUD_LIFETIME - self.life) / float(CLOUD_LIFETIME)
+        self.image = clouds[int(i)]
+
+        if self.life < 0:
+            self.dead = True
 
 class Game(bacon.Game):
     def __init__(self):
         self.cats = []
         self.mice = []
+        self.clouds = []
         self.down = False
         self.spawn_timer = MOUSE_INITIAL_SPAWN_DELAY
         self.cat_spawner = CatSpawner()
         self.catapult = Catapult()
         self.score = 0
         self.mouse_spawn_count = 0
+        self.fadein_timer = GAME_FADEIN_TIME
 
     def on_key(self, key, value):
         if value:
@@ -399,11 +416,13 @@ class Game(bacon.Game):
                 if cat.collides_with(mouse):
                     cat.dead = True
                     mouse.dead = True
+                    self.clouds.append(Cloud(mouse.pos))
                     sounds['explosion'].play()
                     self.score += 5 + 3*clamp(cat.lifetime - 1, 0, 5)
 
         self.cats[:] = [c for c in self.cats if not c.dead]
         self.mice[:] = [m for m in self.mice if not m.dead]
+        self.clouds[:] = [c for c in self.clouds if not c.dead]
 
     def find_mouse_spawn(self):
         i = random.uniform(0, 2*WINDOW_WIDTH + 2*WINDOW_HEIGHT-1)
@@ -417,7 +436,10 @@ class Game(bacon.Game):
         return vec2(WINDOW_WIDTH, i)
         
     def on_tick(self):
-        bacon.clear(0.1, 0.1, 0.1, 0.0)
+        bacon.clear(12/255.0, 20/255.0, 53/255.0, 0)
+
+        bacon.draw_image(textures['background'], 0,0)
+
         bacon.draw_string(font_16, 'spawn_timer: %f' % self.spawn_timer, 
             x=0, y=20,
             align=bacon.Alignment.left,
@@ -439,10 +461,19 @@ class Game(bacon.Game):
             cat.draw()
         for mouse in self.mice:
             mouse.draw()
+        for cloud in self.clouds:
+            cloud.draw()
         earth.draw()
         moon.draw()
         catapult.draw()
         self.cat_spawner.draw(self)
+
+        if self.fadein_timer > 0:
+            self.fadein_timer -= bacon.timestep
+            bacon.push_color()
+            bacon.set_color(0,0,0, smoothstep(self.fadein_timer / float(GAME_FADEIN_TIME)))
+            bacon.fill_rect(0,0, WINDOW_WIDTH, WINDOW_HEIGHT)
+            bacon.pop_color()
 
     def update_state(self):
         self.handle_collision()
@@ -462,9 +493,36 @@ class Game(bacon.Game):
             cat.on_tick()
         for mouse in self.mice:
             mouse.on_tick()
+        for cloud in self.clouds:
+            cloud.on_tick()
 
         catapult.on_tick()
         self.cat_spawner.on_tick(self)
+
+class TitleScreen(bacon.Game):
+    def __init__(self):
+        self.background = bacon.Image('res/TitleScreen.png')
+        self.t = 0.0
+        self.fadeout = False
+
+    def on_key(self, key, value):
+        self.fadeout = True
+
+    def on_mouse_button(self, button, pressed):
+        self.fadeout = True
+
+    def on_tick(self):
+        bacon.draw_image(self.background, 0, 0)
+ 
+        if self.fadeout:
+            self.t += bacon.timestep
+            bacon.push_color()
+            bacon.set_color(0,0,0, smoothstep(self.t))
+            bacon.fill_rect(0,0, WINDOW_WIDTH, WINDOW_HEIGHT)
+            bacon.pop_color()
+
+            if self.t > 1.0:
+                scene.game = Game()
 
 class GameOverScreen(bacon.Game):
     def __init__(self, game):
@@ -475,9 +533,8 @@ class GameOverScreen(bacon.Game):
         self.yvel = 0
 
         self.state = "fade-in"
-        
+            
     def on_tick(self):
-        bacon.clear(0.1, 0.1, 0.1, 0.0)
         bacon.clear(0,0,0,0)
 
         if self.fade_image is None:
@@ -492,14 +549,13 @@ class GameOverScreen(bacon.Game):
             self.y += self.yvel
 
             bacon.push_color()
-            bacon.set_color(0.1, 0.1, 0.1, 1)
-            bacon.fill_rect(0,0, WINDOW_WIDTH, self.y)
+            bacon.draw_image(textures['background'], 0, self.y - WINDOW_HEIGHT)
             bacon.pop_color()
 
             bacon.draw_image(self.fade_image, 0, self.y)
 
             bacon.push_color()
-            bacon.set_color(0,0,0, self.smoothstep(self.t))
+            bacon.set_color(0,0,0, smoothstep(self.t))
             bacon.fill_rect(0,0, WINDOW_WIDTH, WINDOW_HEIGHT)
             bacon.pop_color()
 
@@ -526,7 +582,7 @@ class GameOverScreen(bacon.Game):
                     vertical_align=bacon.VerticalAlignment.center)
 
             bacon.push_color()
-            bacon.set_color(0,0,0, self.smoothstep(self.t))
+            bacon.set_color(0,0,0, smoothstep(self.t))
             if self.state == "game-over":
                 bacon.fill_rect(0,0, WINDOW_WIDTH, WINDOW_HEIGHT)
             else:
@@ -539,13 +595,30 @@ class GameOverScreen(bacon.Game):
             if self.state == "game-over" and self.t <= 0:
                 self.t = 1
                 self.state = "game-over-score"
+            elif self.state == "game-over-score" and self.t <= 0:
+                self.state = "leaderboard-display"
 
-    def smoothstep(self, t):
-        return 3*t*t - 2*t*t*t
+        elif self.state == "leaderboard-display":
+            pass
+            # self.conn = httplib.HTTPConnection(LEADERBOARD_SERVER)
+            # self.conn.request("GET", "/get/%d" % self.game.score)
+            # r = self.conn.getresponse()
+            # if r.status == 200:
+            #     import ast
+            #     self.stats = ast.literal_eval(r.read())
+            #     print self.stats
+            # else:
+            #     print 'Leaderboard returned %d' % r.status
 
 class SceneDispatcher(bacon.Game):
     def __init__(self, game):
         self.game = game
+
+    def on_key(self, key, value):
+        self.game.on_key(key, value)
+
+    def on_mouse_button(self, button, pressed):
+        self.game.on_mouse_button(button, pressed)
 
     def on_tick(self):
         self.game.on_tick()
@@ -563,5 +636,5 @@ class SceneDispatcher(bacon.Game):
 earth = RoundSprite(vec2(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2), textures['earth'])
 moon = Moon(earth, 600)
 catapult = Catapult()
-scene = SceneDispatcher(Game())
+scene = SceneDispatcher(TitleScreen())
 bacon.run(scene)
