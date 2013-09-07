@@ -1,5 +1,12 @@
-Flask==0.9
-Jinja2==2.6
-Werkzeug==0.8.3
-distribute==0.6.27
-wsgiref==0.1.2
+Flask==0.10.1
+Flask-SQLAlchemy==1.0
+Jinja2==2.7.1
+MarkupSafe==0.18
+SQLAlchemy==0.8.2
+Werkzeug==0.9.4
+bacon==0.2.1
+distribute==0.6.49
+flask-heroku==0.1.4
+itsdangerous==0.23
+pywin32==218
+virtualenv==1.10.1
