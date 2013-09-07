@@ -46,8 +46,10 @@ LEADERBOARD_SERVER = "enigmatic-bayou-2555.herokuapp.com"
 #LEADERBOARD_SERVER = "localhost:5000"
 
 bacon.window.resizable = True
-bacon.window.fullscreen = True
+#bacon.window.fullscreen = True
 bacon.window.target = bacon.Image(width=1920, height=1200, atlas=0)
+bacon.window.width = 1024
+bacon.window.height = 768
 
 textures = {
     'catapult_frame': bacon.Image('res/catapultframe.png'),
@@ -480,7 +482,7 @@ class Game(bacon.Game):
         self.spawn_timer -= bacon.timestep
 
         if self.spawn_timer < 0:
-            self.spawn_timer = math.max(MOUSE_SPAWN_COOLDOWN - MOUSE_SPAWN_DECREASE(self.mouse_spawn_count), CAT_SPAWN_COOLDOWN)
+            self.spawn_timer = max(MOUSE_SPAWN_COOLDOWN - MOUSE_SPAWN_DECREASE(self.mouse_spawn_count), CAT_SPAWN_COOLDOWN)
             self.mouse_spawn_count += 1
             self.mice.append(Mouse(self.find_mouse_spawn()))
 
@@ -498,28 +500,37 @@ class Game(bacon.Game):
 class TitleScreen(bacon.Game):
     def __init__(self):
         self.background = bacon.Image('res/TitleScreen.png')
-        self.t = 0.0
+        self.t = 1.0
+        self.help = False
         self.fadeout = False
 
+    def display_next(self):
+        if not self.help:
+            self.background = bacon.Image('res/IntroScreen.png')
+            self.help = True
+        elif not self.fadeout:
+            self.fadeout = True
+        else:
+            scene.game = Game()
+        self.t = 0
+
     def on_key(self, key, value):
-        self.fadeout = True
+        self.display_next()
         handle_standard_keys(key, value)
 
     def on_mouse_button(self, button, pressed):
-        self.fadeout = True
+        self.display_next()
 
     def on_tick(self):
         bacon.draw_image(self.background, 0, 0)
  
-        if self.fadeout:
-            self.t += bacon.timestep
-            bacon.push_color()
-            bacon.set_color(0,0,0, smoothstep(self.t))
-            bacon.fill_rect(0,0, WINDOW_WIDTH, WINDOW_HEIGHT)
-            bacon.pop_color()
+        bacon.push_color()
+        bacon.set_color(0,0,0, smoothstep(1.0 - self.t))
+        bacon.fill_rect(0,0, WINDOW_WIDTH, WINDOW_HEIGHT)
+        bacon.pop_color()
 
-            if self.t > 1.0:
-                scene.game = Game()
+        if self.t < 1.0:
+            self.t += bacon.timestep
 
 class GameOverScreen(bacon.Game):
     def __init__(self, game):
