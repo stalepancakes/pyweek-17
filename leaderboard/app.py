@@ -4,7 +4,7 @@ from flask.ext.heroku import Heroku
 #from flask.ext.sqlalchemy import SQLAlchemy
 from sqlalchemy import *
 
-debug = False
+debug = True
 
 app = Flask(__name__)
 heroku = Heroku(app)
@@ -25,6 +25,10 @@ def hello():
 @app.route('/add/<name>/<int:score>')
 def add(name, score):
 	r = scores.insert().execute({'name': name, 'score': score})
+	return "OK"
+
+@app.route('/get/<int:score>')
+def get(score):
 	i = select([func.count()]).where(scores.c.score < score).select_from(scores).execute().scalar()
 
 	# returns a python list literal. Use ast.literal_eval to read

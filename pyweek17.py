@@ -1,7 +1,10 @@
+import ast
 import sys
 import math
 import bacon
+import string
 import random
+import urllib
 import httplib
 from vectypes import *
 
@@ -13,7 +16,7 @@ MOUSE_SPEED = 60.0
 MOUSE_SPAWN_COOLDOWN = 4.0
 MOUSE_SPAWN_DECREASE = lambda m: 2 * math.log(m + 1, 10)
 MOUSE_INITIAL_SPAWN_DELAY = 4.0
-CAT_SPAWN_COOLDOWN = 0.3
+CAT_SPAWN_COOLDOWN = 0.5
 CAT_ATTACK_RANGE = 50
 
 EARTH_RADIUS = 75
@@ -64,6 +67,7 @@ sounds = {
     'thud0': bacon.Sound('res/thud0.wav'),
     'thud1': bacon.Sound('res/thud1.wav'),
     'fight': bacon.Sound('res/fight.wav'),
+    'omnomnom': bacon.Sound('res/omnomnom.wav'),
 }
 
 moon_eated_states = [100, 75, 50, 25, 15, 5]
@@ -330,11 +334,6 @@ class CatSpawner(object):
         self.cooldown -= bacon.timestep
 
     def draw(self, game):
-        bacon.draw_string(font_16, 'Power: %d' % self.launch_power(), 
-            x=0, y=0,
-            align=bacon.Alignment.left,
-            vertical_align=bacon.VerticalAlignment.top)
-
         self.simulate_launch()
 
     def simulate_launch(self):
@@ -392,6 +391,7 @@ class Game(bacon.Game):
         if value:
             if key == bacon.Keys.w:
                 scene.game = GameOverScreen(self)
+        handle_standard_keys(key, value)
 
     def handle_collision(self):
         def play_thud():
@@ -407,6 +407,7 @@ class Game(bacon.Game):
                 play_thud()
             elif m.collides_with(moon):
                 moon.take_damage(MOUSE_DAMAGE)
+                sounds['omnomnom'].play()
                 m.dead = True
 
         for cat in self.cats:
@@ -439,12 +440,6 @@ class Game(bacon.Game):
         bacon.clear(12/255.0, 20/255.0, 53/255.0, 0)
 
         bacon.draw_image(textures['background'], 0,0)
-
-        bacon.draw_string(font_16, 'spawn_timer: %f' % self.spawn_timer, 
-            x=0, y=20,
-            align=bacon.Alignment.left,
-            vertical_align=bacon.VerticalAlignment.top)
-
         bacon.draw_string(font_24, 'Score: %d' % self.score,
             x=WINDOW_WIDTH/2, y=0,
             align=bacon.Alignment.center,
@@ -507,6 +502,7 @@ class TitleScreen(bacon.Game):
 
     def on_key(self, key, value):
         self.fadeout = True
+        handle_standard_keys(key, value)
 
     def on_mouse_button(self, button, pressed):
         self.fadeout = True
@@ -531,9 +527,22 @@ class GameOverScreen(bacon.Game):
         self.fade_image = None
         self.y = 0
         self.yvel = 0
-
+        self.stats = None
         self.state = "fade-in"
-            
+        self.name = ""
+
+    def draw_gameover(self):
+        bacon.draw_string(font_72, 'GAME OVER',
+            x=WINDOW_WIDTH/2, y=WINDOW_HEIGHT/2,
+            align=bacon.Alignment.center,
+            vertical_align=bacon.VerticalAlignment.center)
+    
+    def draw_score(self):
+        bacon.draw_string(font_24, 'SCORE: %d' % self.game.score,
+            x=WINDOW_WIDTH/2, y=WINDOW_HEIGHT/2 + 72,
+            align=bacon.Alignment.center,
+            vertical_align=bacon.VerticalAlignment.center)
+
     def on_tick(self):
         bacon.clear(0,0,0,0)
 
@@ -570,16 +579,10 @@ class GameOverScreen(bacon.Game):
                 self.t = 1
 
         elif self.state == "game-over" or self.state == "game-over-score":
-            bacon.draw_string(font_72, 'GAME OVER',
-                x=WINDOW_WIDTH/2, y=WINDOW_HEIGHT/2,
-                align=bacon.Alignment.center,
-                vertical_align=bacon.VerticalAlignment.center)
+            self.draw_gameover()
 
             if self.state == "game-over-score":
-                bacon.draw_string(font_24, 'SCORE: %d' % self.game.score,
-                    x=WINDOW_WIDTH/2, y=WINDOW_HEIGHT/2 + 72,
-                    align=bacon.Alignment.center,
-                    vertical_align=bacon.VerticalAlignment.center)
+                self.draw_score()
 
             bacon.push_color()
             bacon.set_color(0,0,0, smoothstep(self.t))
@@ -598,17 +601,75 @@ class GameOverScreen(bacon.Game):
             elif self.state == "game-over-score" and self.t <= 0:
                 self.state = "leaderboard-display"
 
-        elif self.state == "leaderboard-display":
-            pass
-            # self.conn = httplib.HTTPConnection(LEADERBOARD_SERVER)
-            # self.conn.request("GET", "/get/%d" % self.game.score)
-            # r = self.conn.getresponse()
-            # if r.status == 200:
-            #     import ast
-            #     self.stats = ast.literal_eval(r.read())
-            #     print self.stats
-            # else:
-            #     print 'Leaderboard returned %d' % r.status
+        elif self.state == "leaderboard-display" or self.state == "leaderboard-done":
+            self.draw_gameover()
+            self.draw_score()
+
+            if self.state == "leaderboard-done":
+                bacon.draw_string(font_24, 'Press any key to exit the game',
+                    x=WINDOW_WIDTH/2, y=WINDOW_HEIGHT,
+                    align=bacon.Alignment.center,
+                    vertical_align=bacon.VerticalAlignment.bottom)
+    
+            if self.stats is None:
+                try:
+                    self.conn = httplib.HTTPConnection(LEADERBOARD_SERVER)
+                    self.conn.request("GET", "/get/%d" % self.game.score)
+                    r = self.conn.getresponse()
+                    if r.status == 200:
+                        self.stats = ast.literal_eval(r.read())
+                        self.index = 0
+                        for i, (_,score) in enumerate(self.stats):
+                            if self.game.score >= score:
+                                self.index = i+1
+                        self.stats.insert(self.index, (None, score))
+                    else:
+                        print 'Leaderboard returned %d' % r.status
+                except:
+                    print sys.exc_info()
+            else:
+                for i, (name, score) in enumerate(self.stats):
+                    if name is None:
+                        append = '_'
+                        if self.state == "leaderboard-done":
+                            append = ''
+
+                        bacon.draw_string(font_16, '%-30s %8d' % (self.name+append, score),
+                            x=WINDOW_WIDTH/2, y=WINDOW_HEIGHT/2 + 122 + 20*i,
+                            align=bacon.Alignment.center,
+                            vertical_align=bacon.VerticalAlignment.center)
+                    else:
+                        bacon.draw_string(font_16, '%-30s %8d' % (name, score),
+                            x=WINDOW_WIDTH/2, y=WINDOW_HEIGHT/2 + 122 + 20*i,
+                            align=bacon.Alignment.center,
+                            vertical_align=bacon.VerticalAlignment.center)
+
+    def on_key(self, key, value):
+        if value:
+            if key == bacon.Keys.escape:
+                sys.exit()
+
+            if self.state == "leaderboard-display":
+                if key < 255 and chr(key) in string.printable:
+                    if len(self.name) < 29:
+                        self.name += chr(key)
+                elif key == bacon.Keys.enter:
+                    self.state = "leaderboard-done"
+
+                    try:
+                        self.conn = httplib.HTTPConnection(LEADERBOARD_SERVER)
+                        self.conn.request("GET", "/add/%s/%d" % (urllib.quote(self.name), self.game.score))
+                        r = self.conn.getresponse()
+                        if r.status == 200:
+                            print 'Leaderboard updated!'
+                        else:
+                            print 'Leaderboard returned %d' % r.status
+                    except:
+                        print sys.exc_info()
+                    return
+
+            if self.state == "leaderboard-done":
+                sys.exit()
 
 class SceneDispatcher(bacon.Game):
     def __init__(self, game):
@@ -624,14 +685,15 @@ class SceneDispatcher(bacon.Game):
         self.game.on_tick()
 
     def on_key(self, key, value):
-        if value:
-            if key == bacon.Keys.q:
-                sys.exit()
-                return
-            elif key == bacon.Keys.f:
-                bacon.window.fullscreen = not bacon.window.fullscreen
-                return
         self.game.on_key(key, value)
+
+def handle_standard_keys(key, value):
+    if key == bacon.Keys.q or key == bacon.Keys.escape:
+        sys.exit()
+        return
+    elif key == bacon.Keys.f:
+        bacon.window.fullscreen = not bacon.window.fullscreen
+        return
 
 earth = RoundSprite(vec2(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2), textures['earth'])
 moon = Moon(earth, 600)
