@@ -38,3 +38,5 @@ bacon.log
 leaderboard/.gitignore
 
 sounds/
+venv/
+testing.db
