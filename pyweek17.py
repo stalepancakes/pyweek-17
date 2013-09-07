@@ -6,6 +6,7 @@ import string
 import random
 import urllib
 import httplib
+import threading
 from vectypes import *
 
 WINDOW_WIDTH = 1920
@@ -41,8 +42,8 @@ CLOUD_LIFETIME = 0.75
 
 GAME_FADEIN_TIME = 0.5
 
-#LEADERBOARD_SERVER = "enigmatic-bayou-2555.herokuapp.com"
-LEADERBOARD_SERVER = "localhost:5000"
+LEADERBOARD_SERVER = "enigmatic-bayou-2555.herokuapp.com"
+#LEADERBOARD_SERVER = "localhost:5000"
 
 bacon.window.resizable = True
 bacon.window.fullscreen = True
@@ -479,7 +480,7 @@ class Game(bacon.Game):
         self.spawn_timer -= bacon.timestep
 
         if self.spawn_timer < 0:
-            self.spawn_timer = MOUSE_SPAWN_COOLDOWN - MOUSE_SPAWN_DECREASE(self.mouse_spawn_count)
+            self.spawn_timer = math.max(MOUSE_SPAWN_COOLDOWN - MOUSE_SPAWN_DECREASE(self.mouse_spawn_count), CAT_SPAWN_COOLDOWN)
             self.mouse_spawn_count += 1
             self.mice.append(Mouse(self.find_mouse_spawn()))
 
@@ -527,9 +528,9 @@ class GameOverScreen(bacon.Game):
         self.fade_image = None
         self.y = 0
         self.yvel = 0
-        self.stats = None
         self.state = "fade-in"
         self.name = ""
+        self.get_stats()
 
     def draw_gameover(self):
         bacon.draw_string(font_72, 'GAME OVER',
@@ -600,6 +601,7 @@ class GameOverScreen(bacon.Game):
                 self.state = "game-over-score"
             elif self.state == "game-over-score" and self.t <= 0:
                 self.state = "leaderboard-display"
+                self.t = 1
 
         elif self.state == "leaderboard-display" or self.state == "leaderboard-done":
             self.draw_gameover()
@@ -611,23 +613,7 @@ class GameOverScreen(bacon.Game):
                     align=bacon.Alignment.center,
                     vertical_align=bacon.VerticalAlignment.bottom)
     
-            if self.stats is None:
-                try:
-                    self.conn = httplib.HTTPConnection(LEADERBOARD_SERVER)
-                    self.conn.request("GET", "/get/%d" % self.game.score)
-                    r = self.conn.getresponse()
-                    if r.status == 200:
-                        self.stats = ast.literal_eval(r.read())
-                        self.index = 0
-                        for i, (_,score) in enumerate(self.stats):
-                            if self.game.score >= score:
-                                self.index = i+1
-                        self.stats.insert(self.index, (None, score))
-                    else:
-                        print 'Leaderboard returned %d' % r.status
-                except:
-                    print sys.exc_info()
-            else:
+            if not self.stats_loader.is_alive():
                 for i, (name, score) in enumerate(self.stats):
                     if name is None:
                         append = '_'
@@ -643,6 +629,14 @@ class GameOverScreen(bacon.Game):
                             x=WINDOW_WIDTH/2, y=WINDOW_HEIGHT/2 + 122 + 20*i,
                             align=bacon.Alignment.center,
                             vertical_align=bacon.VerticalAlignment.center)
+
+            bacon.push_color()
+            bacon.set_color(0,0,0, smoothstep(self.t))
+            bacon.fill_rect(0, WINDOW_HEIGHT/2+116, WINDOW_WIDTH, WINDOW_HEIGHT)
+            bacon.pop_color()
+
+            if self.t > 0:
+                self.t -= bacon.timestep / GAME_OVER_FADETEXT
 
     def on_key(self, key, value):
         if value:
@@ -670,6 +664,29 @@ class GameOverScreen(bacon.Game):
 
             if self.state == "leaderboard-done":
                 sys.exit()
+
+    def get_stats(self):
+        def background(_self, self_game_score):
+            try:
+                conn = httplib.HTTPConnection(LEADERBOARD_SERVER)
+                conn.request("GET", "/get/%d" % self.game.score)
+                r = conn.getresponse()
+                if r.status == 200:
+                    _self.stats = ast.literal_eval(r.read())
+                    index = 0
+                    for i, (_,score) in enumerate(self.stats):
+                        if self_game_score >= score:
+                            index = i+1
+                    _self.stats.insert(index, (None, self_game_score))
+                    _self.stats.reverse()
+                else:
+                    print 'Leaderboard returned %d' % r.status
+            except:
+                print sys.exc_info()
+
+        score = self.game.score
+        self.stats_loader = threading.Thread(target = lambda: background(self, score))
+        self.stats_loader.start()
 
 class SceneDispatcher(bacon.Game):
     def __init__(self, game):
