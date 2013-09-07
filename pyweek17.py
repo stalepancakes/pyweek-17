@@ -39,6 +39,12 @@ textures = {
     'cat': bacon.Image('res/cat.png')
 }
 
+sounds = {
+    'squeak': bacon.Sound('res/squeak.wav'),
+    'explosion': bacon.Sound('res/explosion.wav'),
+    'catapult': bacon.Sound('res/catapult.wav')
+}
+
 moon_eated_states = [100, 75, 50, 25, 15, 5]
 
 font_16 = bacon.Font(None, 16)
@@ -181,6 +187,7 @@ class Mouse(RoundSprite):
     def __init__(self, pos):
         super(Mouse, self).__init__(pos, textures['mouse'])
         self.dead = False
+        sounds['squeak'].play()
 
     def on_tick(self):
         time_to_moon = 0
@@ -222,6 +229,7 @@ class CatSpawner(object):
             offset = (earth.radius + textures['cat'].width / 2 + 1) * self.direction()
             game.cats.append(Cat(self.pos, self.direction(), self.launch_power()))
             self.cooldown = CAT_SPAWN_COOLDOWN
+            sounds['catapult'].play()
 
     def on_tick(self, game):
         if bacon.mouse.left:
@@ -294,6 +302,7 @@ class Game(bacon.Game):
                 if cat.collides_with(mouse):
                     cat.dead = True
                     mouse.dead = True
+                    sounds['explosion'].play()
                     self.score += 5
 
         self.cats[:] = [c for c in self.cats if not c.dead]
