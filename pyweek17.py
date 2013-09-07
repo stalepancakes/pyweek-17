@@ -76,21 +76,23 @@ def verlet_step(o, a):
     o.last_pos, o.pos = o.pos, new_pos
 
 class Sprite(object):
-    def __init__(self, pos, image):
+    def __init__(self, pos, image, rotation = 0):
         self.pos = pos
         self.image = image
+        self.rotation = rotation
 
     def draw(self):
         ox, oy = self.image.width / 2, self.image.height / 2
 
         bacon.push_transform()
         bacon.translate(self.pos.x, self.pos.y)
+        bacon.rotate(self.rotation)
         bacon.draw_image(self.image, -ox, -oy)
         bacon.pop_transform()
 
 class RoundSprite(Sprite):
-    def __init__(self, pos, image):
-        super(RoundSprite, self).__init__(pos, image)
+    def __init__(self, pos, image, rotation=0):
+        super(RoundSprite, self).__init__(pos, image, rotation)
         self.radius = image.width / 2
 
     def collides_with(self, thing):
@@ -154,8 +156,8 @@ class Moon(RoundSprite):
             scene.game = GameOverScreen(scene.game)
 
 class Cat(RoundSprite):
-    def __init__(self, pos, direction, power):
-        super(Cat, self).__init__(pos, textures['cat'])
+    def __init__(self, pos, direction, power, rotation=0):
+        super(Cat, self).__init__(pos, textures['cat'], rotation)
         self.dead = False
         self.lifetime = 0
         self.target = None
@@ -208,49 +210,85 @@ class Mouse(RoundSprite):
         to_target = normalize(moon.future_position(time_to_moon) - self.pos)
         self.pos += to_target * MOUSE_SPEED * bacon.timestep
 
+class CatapultState(object):
+    Idle = 0
+    Fling = 1
+    Reset = 2
 class Catapult(Sprite):
     def __init__(self):
         super(Catapult, self).__init__(vec2(0, 0), textures['catapult_frame'])
         self.pos = earth.pos - vec2(0, earth.radius) - vec2(0, -5 + self.image.height / 2)
         self.arm = textures['catapult_spoon']
+        self.cat = textures['cat']
         self.angle = 0
+        self.state = CatapultState.Idle
         self.t = 1
 
     def on_tick(self):
-        if self.t != 1:
+        if self.state == CatapultState.Fling:
             self.t += bacon.timestep / CATAPULT_FIRE_TIME
             self.angle = math.pi * self.interp(self.t, CATAPULT_START_ANGLE, CATAPULT_END_ANGLE) / 180.0
             if self.t >= 1 or self.angle > self.end_angle:
                 self.t = 1
-                self.on_fling()
+                self.on_fling(self.angle)
                 self.on_fling = None
+                self.state = CatapultState.Reset
+        elif self.state == CatapultState.Reset:
+            self.t -= bacon.timestep / CATAPULT_FIRE_TIME
+            self.angle = math.pi * self.interp(self.t, CATAPULT_START_ANGLE, CATAPULT_END_ANGLE) / 180.0
+            if self.t < 0:
+                self.state = CatapultState.Idle
 
     def interp(self, t, a, b):
         return a + t * (b-a)
 
-    def draw(self):
-        super(Catapult, self).draw()
-
-        ox, oy = self.arm.width / 2, self.arm.height / 2
+    def draw_image(self, img):
+        ox, oy = img.width / 2, img.height / 2
         bacon.push_transform()
         bacon.translate(self.pos.x + 17, self.pos.y - 15)
         bacon.rotate(self.angle)
-        bacon.draw_image(self.arm, -2*ox + 16, -oy)
+        bacon.draw_image(img, -1.5*ox, -oy)
         bacon.pop_transform()
 
-        self.angle = 0
+    def draw(self):
+        super(Catapult, self).draw()
+
+        self.draw_image(self.arm)
+
+        if self.state != CatapultState.Reset:
+            #self.draw_image(self.cat)
+            img = self.cat
+            ox, oy = img.width / 2, img.height / 2
+            bacon.push_transform()
+            
+            pos = self.get_launch_pos_from_angle(self.angle)
+            #bacon.translate(self.pos.x - 22, self.pos.y - 15)
+            bacon.translate(pos.x, pos.y)
+            bacon.rotate(self.angle)
+            bacon.translate
+            #bacon.rotate(self.angle)
+            if not hasattr(self, 'qq'):
+                self.qq = 0
+            #bacon.rotate(self.qq)
+            self.qq += bacon.timestep
+            bacon.draw_image(img, -ox, -2*oy)
+            bacon.pop_transform()
 
     def get_launch_pos(self, direction):
-        end_angle = self.get_end_angle(direction)
+        return self.get_launch_pos_from_angle(self.get_end_angle(direction))
+
+    def get_launch_pos_from_angle(self, end_angle):
         return self.pos + vec2(17, -15) + rotate(vec2(-self.arm.width + 25, 0), end_angle)
 
     def get_end_angle(self, direction):
         return clamp(math.atan2(direction.x, -1 * direction.y), 0, math.pi/2)
 
     def fling(self, direction, on_fling):
-        self.t = 0
-        self.end_angle = self.get_end_angle(direction)
-        self.on_fling = on_fling
+        if self.state == CatapultState.Idle:
+            self.state = CatapultState.Fling
+            self.t = 0
+            self.end_angle = self.get_end_angle(direction)
+            self.on_fling = on_fling
 
 class CatSpawner(object):
     def __init__(self):
@@ -280,7 +318,7 @@ class CatSpawner(object):
             offset = (earth.radius + textures['cat'].width / 2 + 1) * self.direction()
             self.cooldown = CAT_SPAWN_COOLDOWN
             sounds['catapult'].play()
-            catapult.fling(self.direction(), lambda: game.cats.append(Cat(pos, direction, launch_power)))
+            catapult.fling(self.direction(), lambda rotation: game.cats.append(Cat(pos, direction, launch_power, rotation)))
 
     def on_tick(self, game):
         if bacon.mouse.left:
