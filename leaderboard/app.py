@@ -1,17 +1,18 @@
 import os
 from flask import Flask
 from flask.ext.heroku import Heroku
-from flask.ext.sqlalchemy import SQLAlchemy
+#from flask.ext.sqlalchemy import SQLAlchemy
 from sqlalchemy import MetaData, Table, Column, Integer, String, create_engine
-
-app = Flask(__name__)
-heroku = Heroku(app)
-db = SQLAlchemy(app)
 
 debug = False
 
+app = Flask(__name__)
+heroku = Heroku(app)
+
 if debug:
-	db = create_engine('sqlite:///testing.db')
+	app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///testing.db'
+
+db = create_engine(app.config['SQLALCHEMY_DATABASE_URI'])
 
 metadata = MetaData(db)
 scores = Table('scores', metadata,
